@@ -1,7 +1,38 @@
 require 'monetdb'
+require 'tempfile'
 
 module MonetDB
   class Connection
+
+    def bulk_load table_name, file_path, delims, null_character
+
+      output = nil
+
+      check_connectivity!
+      raise ConnectionError, "Not connected to server" unless connected?
+
+      delim_str = delims.map { |d| "'#{d}'" }.join(',')
+      statement = "COPY INTO #{table_name} FROM STDIN"
+      statement << " USING DELIMITERS #{delim_str}" if delims && delims.any?
+      statement << " NULL AS '#{null_character}'" if null_character
+
+      begin
+        credentials = Tempfile.new('.monetdb-')
+        credentials << "user=#{config[:username]}\n"
+        credentials << "password=#{config[:password]}"
+        credentials.flush
+
+        cmd = "DOTMONETDBFILE=#{credentials.path} mclient -h #{config[:host]} -d #{config[:database]} -s \"#{statement}\" - < #{file_path}"
+        output = `#{cmd} 2>&1`
+        if !$?.success?
+          raise Error, "Bulk insert failed: #{output}"
+        end
+      ensure
+        credentials.close
+        credentials.unlink
+      end
+      output
+    end
 
     def parse_value(type, value)
       unless value == "NULL"
@@ -76,6 +107,18 @@ module Sequel
         execute(sql, opts)
       end
 
+      def bulk_load(table_name, file_path, delims, null_character, opts=OPTS)
+        synchronize(opts[:server]) do |conn|
+          begin
+            output = log_yield("Bulk load #{file_path} into #{table_name}"){ conn.bulk_load(table_name, file_path, delims, null_character) }
+            log_info("Bulk load: #{output}")
+            yield(r) if block_given?
+          rescue Exception, ArgumentError => e
+            raise_error(e)
+          end
+        end
+      end
+
 
       private
 
@@ -102,6 +145,10 @@ module Sequel
     class Dataset < Sequel::Dataset
 
       Database::DatasetClass = self
+
+      def bulk_load(file_path, delims, null_character)
+        db.bulk_load(first_source_table, file_path, delims, null_character)
+      end
 
       def fetch_rows(sql)
         execute(sql) do |s|
