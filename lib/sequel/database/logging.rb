@@ -11,7 +11,7 @@ module Sequel
 
     # Array of SQL loggers to use for this database.
     attr_accessor :loggers
-    
+
     # Log level at which to log SQL queries.  This is actually the method
     # sent to the logger, so it should be the method name symbol. The default
     # is :info, it can be set to :debug to log at DEBUG level.
@@ -19,7 +19,7 @@ module Sequel
 
     # Log a message at error level, with information about the exception.
     def log_exception(exception, message)
-      log_each(:error, "#{exception.class}: #{exception.message.strip if exception.message}: #{message}")
+      log_each(:error, "#{exception.class}: #{exception.message.strip if exception.message}: #{message.force_encoding('ascii-8bit')}")
     end
 
     # Log a message at level info to all loggers.
@@ -51,7 +51,7 @@ module Sequel
     end
 
     private
-    
+
     # Log the given SQL and then execute it on the connection, used by
     # the transaction code.
     def log_connection_execute(conn, sql)
@@ -61,7 +61,7 @@ module Sequel
     # Log message with message prefixed by duration at info level, or
     # warn level if duration is greater than log_warn_duration.
     def log_duration(duration, message)
-      log_each((lwd = log_warn_duration and duration >= lwd) ? :warn : sql_log_level, "(#{sprintf('%0.6fs', duration)}) #{message}")
+      log_each((lwd = log_warn_duration and duration >= lwd) ? :warn : sql_log_level, "[] (#{sprintf('%0.6fs', duration)}) #{message}")
     end
 
     # Log message at level (which should be :error, :warn, or :info)

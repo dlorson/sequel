@@ -47,15 +47,38 @@ module MonetDB
 
     private
 
-    ResultSet = Struct.new(:columns, :rows)
+    QueryResult = Struct.new(:columns, :rows, :last_id)
 
     def parse_response(response)
       query_header, table_header = extract_headers!(response)
-      if query_header[:type] == Q_TABLE
-        ResultSet.new(table_header[:column_names].zip(table_header[:column_types]), parse_table_response(query_header, table_header, response))
+
+      case query_header[:type]
+      when Q_TABLE
+        QueryResult.new(table_header[:column_names].zip(table_header[:column_types]), parse_table_response(query_header, table_header, response))
+      when Q_UPDATE
+        QueryResult.new(nil, nil, query_header[:last_id])
       else
         true
       end
+    end
+
+
+    def to_query_header_hash(header)
+
+      hash = {:type => header[1].chr}
+
+      keys = {
+        Q_TABLE => [:id, :rows, :columns, :returned],
+        Q_BLOCK => [:id, :columns, :remains, :offset],
+        Q_UPDATE => [:inserted, :last_id],
+      }[hash[:type]]
+
+      if keys
+        values = header.split(" ")[1, 4].collect(&:to_i)
+        hash.merge! Hash[keys.zip(values)]
+      end
+
+      hash.freeze
     end
 
   end
@@ -71,6 +94,10 @@ module Sequel
 
 
     class Database < Sequel::Database
+
+      SQL_BEGIN = "START TRANSACTION".freeze
+
+
       set_adapter_scheme :monetdb
 
       GUARDED_DRV_NAME = /^\{.+\}$/.freeze
@@ -88,18 +115,27 @@ module Sequel
         c.disconnect
       end
 
+      def connection_execute_method
+        :query
+      end
+
       def execute(sql, opts=OPTS)
         synchronize(opts[:server]) do |conn|
+          conv = convert_sql(sql)
+          r = nil
           begin
-            conv = convert_sql(sql)
-            puts "Executing query: #{conv}"
             r = log_yield(sql){conn.query(conv)}
             yield(r) if block_given?
           rescue Exception, ArgumentError => e
+            puts "Error executing query: #{conv}"
             raise_error(e)
           end
-          nil
+          r
         end
+      end
+
+      def execute_insert(sql, opts=OPTS)
+        execute(sql, opts){|c| return c.last_id}
       end
 
       # Return the number of matched rows when executing a delete/update statement.
@@ -114,9 +150,15 @@ module Sequel
             log_info("Bulk load: #{output}")
             yield(r) if block_given?
           rescue Exception, ArgumentError => e
+            `cp #{file_path} /var/tmp`
             raise_error(e)
           end
         end
+      end
+
+      # MonetDB doesn't require upcase identifiers.
+      def identifier_input_method_default
+        nil
       end
 
 
@@ -126,9 +168,12 @@ module Sequel
         AUTOINCREMENT
       end
 
+      def begin_transaction_sql
+        SQL_BEGIN
+      end
+
 
       def convert_sql sql
-        sql = sql.downcase
         sql = remove_not_equal(sql)
         sql
       end
