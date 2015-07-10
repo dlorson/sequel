@@ -97,12 +97,7 @@ module Sequel
 
       SQL_BEGIN = "START TRANSACTION".freeze
 
-
       set_adapter_scheme :monetdb
-
-      GUARDED_DRV_NAME = /^\{.+\}$/.freeze
-      DRV_NAME_GUARDS = '{%s}'.freeze
-      DISCONNECT_ERRORS = /\A08S01/.freeze
 
       def connect(server)
         opts = server_opts(server)
@@ -174,14 +169,14 @@ module Sequel
 
 
       def convert_sql sql
-        sql = remove_not_equal(sql)
+        sql = conform_not_equal_operator(sql)
         sql
       end
 
-      def remove_not_equal sql
-        # ...(a != b)... ==> NOT(a == b)
+      def conform_not_equal_operator sql
+        # ...a != b... ==> a <> b
         # since the former is not supported by Monet
-        sql.gsub(/\(?([\'\"]?[\w].?[\w]+[\'\"]?)\)?\s?\!\=\s?([\'\"]?[\w].?[\w]+[\'\"]?)\)?/, 'not (\1 = \2)')
+        sql.gsub(/\!\=/, '<>')
       end
 
 
