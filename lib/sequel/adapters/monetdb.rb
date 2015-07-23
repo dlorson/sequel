@@ -119,10 +119,11 @@ module Sequel
           conv = convert_sql(sql)
           r = nil
           begin
-            r = log_yield(sql){conn.query(conv)}
+            r = log_yield(conv){conn.query(conv)}
             yield(r) if block_given?
           rescue Exception, ArgumentError => e
             puts "Error executing query: #{conv}"
+            puts e.backtrace
             raise_error(e)
           end
           r
@@ -156,6 +157,23 @@ module Sequel
         nil
       end
 
+      # Disable the mitosis pipeline.
+      # This pipeline generates parallel (multi-core) MAL instructions
+      # to execute the query plan.
+      # However, it generates highly non-optimal instructions in certain scenarios,
+      # such as small range or point queries in large tables.
+      def without_mitosis_pipeline
+        ret = nil
+        synchronize do
+          begin
+            run "set optimizer='no_mitosis_pipe'"
+            ret = yield
+          ensure
+            run "set optimizer='default_pipe'"
+          end
+        end
+        ret
+      end
 
       private
 
@@ -169,14 +187,24 @@ module Sequel
 
 
       def convert_sql sql
-        sql = conform_not_equal_operator(sql)
-        sql
+        rewrite_neq_operator(sql)
       end
 
-      def conform_not_equal_operator sql
+      def rewrite_neq_operator sql
         # ...a != b... ==> a <> b
         # since the former is not supported by Monet
         sql.gsub(/\!\=/, '<>')
+      end
+
+      def schema_parse_table table_name, opts = {}
+        res = fetch "select c.* from \"tables\" t inner join columns c on c.table_id = t.id where t.name = '#{table_name}'"
+        res.map do |row|
+          row[:allow_null] = row.delete(:null) == true
+          row[:default] = row.delete(:default)
+          row[:db_type] = row.delete(:type)
+          row[:type] = schema_column_type(row[:db_type])
+          [row.delete(:name), row]
+        end
       end
 
 
@@ -206,6 +234,7 @@ module Sequel
         end
         self
       end
+
 
     end
   end
