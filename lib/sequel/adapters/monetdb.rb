@@ -244,7 +244,7 @@ module Sequel
           from storage
           where "schema" = 'sys' and "table" = '#{first_source_table}'
         SQL
-        db.fetch(q).all
+        db.fetch(q).first
       end
 
     end
