@@ -235,6 +235,17 @@ module Sequel
         self
       end
 
+      def data_size
+        q = <<-SQL
+          select
+            sum(columnsize) as columns,
+            sum(heapsize) as heap,
+            sum(hashes) as hashes
+          from storage
+          where "schema" = 'sys' and "table" = '#{first_source_table}'
+        SQL
+        db.fetch(q).all
+      end
 
     end
   end
