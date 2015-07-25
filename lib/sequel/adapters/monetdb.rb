@@ -22,7 +22,7 @@ module MonetDB
         credentials << "password=#{config[:password]}"
         credentials.flush
 
-        cmd = "DOTMONETDBFILE=#{credentials.path} mclient -h #{config[:host]} -d #{config[:database]} -s \"#{statement}\" - < #{file_path}"
+        cmd = "DOTMONETDBFILE=#{credentials.path} mclient -Eutf-8 -h #{config[:host]} -d #{config[:database]} -s \"#{statement}\" - < #{file_path}"
         output = `#{cmd} 2>&1`
         if !$?.success?
           raise Error, "Bulk insert failed: #{output}"
