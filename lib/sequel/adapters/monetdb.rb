@@ -186,7 +186,13 @@ module Sequel
 
 
       def convert_sql sql
-        rewrite_neq_operator(sql)
+        sql = rewrite_neq_operator(sql)
+        sql = rewrite_backslash(sql)
+        sql
+      end
+
+      def rewrite_backslash sql
+        sql.gsub("'\\'", "'\\\\\\\\'")
       end
 
       def rewrite_neq_operator sql
@@ -205,7 +211,6 @@ module Sequel
           [row.delete(:name), row]
         end
       end
-
 
     end
 
