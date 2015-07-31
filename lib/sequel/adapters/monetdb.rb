@@ -93,6 +93,7 @@ module Sequel
     AUTOINCREMENT = 'AUTO_INCREMENT'.freeze
 
 
+
     class Database < Sequel::Database
 
       SQL_BEGIN = "START TRANSACTION".freeze
@@ -156,6 +157,10 @@ module Sequel
         nil
       end
 
+      def identifier_output_method_default
+        nil
+      end
+
       # Disable the mitosis pipeline.
       # This pipeline generates parallel (multi-core) MAL instructions
       # to execute the query plan.
@@ -208,7 +213,9 @@ module Sequel
           row[:default] = row.delete(:default)
           row[:db_type] = row.delete(:type)
           row[:type] = schema_column_type(row[:db_type])
-          [row.delete(:name), row]
+          name = row.delete(:name)
+          name = name.to_sym if name
+          [name, row]
         end
       end
 
@@ -226,8 +233,7 @@ module Sequel
         execute(sql) do |s|
           i = -1
           cols = s.columns.map{|c| [output_identifier(c[0]), c[1], i+=1]}
-          columns = cols.map{|c| c.at(0)}
-          @columns = columns
+          @columns = cols.map{|c| c.at(0)}
           if rows = s.rows
             rows.each do |row|
               hash = {}
