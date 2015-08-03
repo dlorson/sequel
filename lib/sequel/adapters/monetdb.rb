@@ -137,7 +137,7 @@ module Sequel
       # Return the number of matched rows when executing a delete/update statement.
       def execute_dui(sql, opts=OPTS)
         #execute(sql, opts)
-        execute(sql, opts){|c| return c.inserted_rows }
+        execute(sql, opts){|c| return c.inserted_rows if c.respond_to?(:inserted_rows) }
       end
 
       def bulk_load(table_name, file_path, delims, null_character, opts=OPTS)
