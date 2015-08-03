@@ -47,7 +47,7 @@ module MonetDB
 
     private
 
-    QueryResult = Struct.new(:columns, :rows, :last_id)
+    QueryResult = Struct.new(:columns, :rows, :last_id, :inserted_rows)
 
     def parse_response(response)
       query_header, table_header = extract_headers!(response)
@@ -56,7 +56,7 @@ module MonetDB
       when Q_TABLE
         QueryResult.new(table_header[:column_names].zip(table_header[:column_types]), parse_table_response(query_header, table_header, response))
       when Q_UPDATE
-        QueryResult.new(nil, nil, query_header[:last_id])
+        QueryResult.new(nil, nil, query_header[:last_id], query_header[:inserted])
       else
         true
       end
@@ -136,7 +136,8 @@ module Sequel
 
       # Return the number of matched rows when executing a delete/update statement.
       def execute_dui(sql, opts=OPTS)
-        execute(sql, opts)
+        #execute(sql, opts)
+        execute(sql, opts){|c| return c.inserted_rows }
       end
 
       def bulk_load(table_name, file_path, delims, null_character, opts=OPTS)
