@@ -10,7 +10,7 @@ module Sequel
       include Sequel::MySQL::PreparedStatements::DatabaseMethods
 
       set_adapter_scheme :mysql2
-      
+
       # Whether to convert tinyint columns to bool for this database
       attr_accessor :convert_tinyint_to_bool
 
@@ -73,6 +73,7 @@ module Sequel
       # option is :select, yield the result of the query, otherwise
       # yield the connection if a block is given.
       def _execute(conn, sql, opts)
+        puts "Execute on #{conn}"
         begin
           stream = opts[:stream]
           r = log_yield((log_sql = opts[:log_sql]) ? sql + log_sql : sql){conn.query(sql, :database_timezone => timezone, :application_timezone => Sequel.application_timezone, :stream=>stream)}

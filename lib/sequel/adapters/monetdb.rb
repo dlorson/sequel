@@ -4,47 +4,6 @@ require 'tempfile'
 module MonetDB
   class Connection
 
-    def bulk_load table_name, file_path, delims, null_character
-
-      output = nil
-
-      check_connectivity!
-      raise ConnectionError, "Not connected to server" unless connected?
-
-      delim_str = delims.map { |d| "'#{d}'" }.join(',')
-      statement = "COPY INTO #{table_name} FROM STDIN"
-      statement << " USING DELIMITERS #{delim_str}" if delims && delims.any?
-      statement << " NULL AS '#{null_character}'" if null_character
-
-      begin
-        credentials = Tempfile.new('.monetdb-')
-        credentials << "user=#{config[:username]}\n"
-        credentials << "password=#{config[:password]}"
-        credentials.flush
-
-        cmd = "DOTMONETDBFILE=#{credentials.path} mclient -Eutf-8 -h #{config[:host]} -d #{config[:database]} -s \"#{statement}\" - < #{file_path}"
-        output = `#{cmd} 2>&1`
-        if !$?.success?
-          raise Error, "Bulk insert failed: #{output}"
-        end
-      ensure
-        credentials.close
-        credentials.unlink
-      end
-      output
-    end
-
-    def parse_value(type, value)
-      unless value == "NULL"
-        case type
-        when :boolean
-          parse_boolean_value value
-        else
-          super(type, value)
-        end
-      end
-    end
-
     private
 
     QueryResult = Struct.new(:columns, :rows, :last_id, :inserted_rows)
@@ -61,38 +20,12 @@ module MonetDB
         true
       end
     end
-
-
-    def to_query_header_hash(header)
-
-      hash = {:type => header[1].chr}
-
-      keys = {
-        Q_TABLE => [:id, :rows, :columns, :returned],
-        Q_BLOCK => [:id, :columns, :remains, :offset],
-        Q_UPDATE => [:inserted, :last_id],
-      }[hash[:type]]
-
-      if keys
-        values = header.split(" ")[1, 4].collect(&:to_i)
-        hash.merge! Hash[keys.zip(values)]
-      end
-
-      hash.freeze
-    end
-
   end
 end
 
-
-
-
 module Sequel
   module MonetDB
-
     AUTOINCREMENT = 'AUTO_INCREMENT'.freeze
-
-
 
     class Database < Sequel::Database
 
@@ -141,16 +74,42 @@ module Sequel
       end
 
       def bulk_load(table_name, file_path, delims, null_character, opts=OPTS)
-        synchronize(opts[:server]) do |conn|
-          begin
-            output = log_yield("Bulk load #{file_path} into #{table_name}"){ conn.bulk_load(table_name, file_path, delims, null_character) }
-            log_info("Bulk load: #{output}")
-            yield(r) if block_given?
-          rescue Exception, ArgumentError => e
-            `cp #{file_path} /var/tmp`
-            raise_error(e)
-          end
+        begin
+          output = log_yield("Bulk load #{file_path} into #{table_name}"){ _bulk_load(table_name, file_path, delims, null_character) }
+          log_info("Bulk load: #{output}")
+          yield(r) if block_given?
+        rescue Exception, ArgumentError => e
+          raise_error(e)
         end
+      end
+
+      def _bulk_load table_name, file_path, delims, null_character
+        output = nil
+
+        check_connectivity!
+        raise ConnectionError, "Not connected to server" unless connected?
+
+        delim_str = delims.map { |d| "'#{d}'" }.join(',')
+        statement = "COPY INTO #{table_name} FROM STDIN"
+        statement << " USING DELIMITERS #{delim_str}" if delims && delims.any?
+        statement << " NULL AS '#{null_character}'" if null_character
+
+        begin
+          credentials = Tempfile.new('.monetdb-')
+          credentials << "user=#{config[:username]}\n"
+          credentials << "password=#{config[:password]}"
+          credentials.flush
+
+          cmd = "DOTMONETDBFILE=#{credentials.path} mclient -Eutf-8 -h #{config[:host]} -d #{config[:database]} -s \"#{statement}\" - < #{file_path}"
+          output = `#{cmd} 2>&1`
+          if !$?.success?
+            raise Error, "Bulk insert failed: #{output}"
+          end
+        ensure
+          credentials.close
+          credentials.unlink
+        end
+        output
       end
 
       # MonetDB doesn't require upcase identifiers.
