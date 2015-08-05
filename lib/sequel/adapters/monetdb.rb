@@ -55,8 +55,10 @@ module Sequel
           begin
             r = log_yield(conv){conn.query(conv)}
             yield(r) if block_given?
+
+          rescue ::MonetDB::ConnectionError => e
+            raise DatabaseDisconnectError, "MonetDB: #{e.message}"
           rescue Exception, ArgumentError => e
-            # puts "Error executing query: #{conv}"
             raise_error(e)
           end
           r
