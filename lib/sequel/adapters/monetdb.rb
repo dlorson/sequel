@@ -102,12 +102,14 @@ module Sequel
       end
 
       def bulk_load(table_name, file_path, delims, null_character, opts=OPTS)
-        begin
-          output = log_yield("Bulk load #{file_path} into #{table_name}"){ conn.bulk_load(table_name, file_path, delims, null_character) }
-          log_info("Bulk load: #{output}")
-          yield(r) if block_given?
-        rescue Exception, ArgumentError => e
-          raise_error(e)
+        synchronize(opts[:server]) do |conn|
+          begin
+            output = log_yield("Bulk load #{file_path} into #{table_name}"){ conn.bulk_load(table_name, file_path, delims, null_character) }
+            log_info("Bulk load: #{output}")
+            yield(r) if block_given?
+          rescue Exception, ArgumentError => e
+            raise_error(e)
+          end
         end
       end
 
