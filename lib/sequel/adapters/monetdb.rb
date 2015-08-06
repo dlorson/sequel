@@ -20,6 +20,32 @@ module MonetDB
         true
       end
     end
+
+    def bulk_load table_name, file_path, delims, null_character
+      output = nil
+
+      delim_str = delims.map { |d| "'#{d}'" }.join(',')
+      statement = "COPY INTO #{table_name} FROM STDIN"
+      statement << " USING DELIMITERS #{delim_str}" if delims && delims.any?
+      statement << " NULL AS '#{null_character}'" if null_character
+
+      begin
+        credentials = Tempfile.new('.monetdb-')
+        credentials << "user=#{config[:username]}\n"
+        credentials << "password=#{config[:password]}"
+        credentials.flush
+
+        cmd = "DOTMONETDBFILE=#{credentials.path} mclient -Eutf-8 -h #{config[:host]} -d #{config[:database]} -s \"#{statement}\" - < #{file_path}"
+        output = `#{cmd} 2>&1`
+        if !$?.success?
+          raise Error, "Bulk insert failed: #{output}"
+        end
+      ensure
+        credentials.close
+        credentials.unlink
+      end
+      output
+    end
   end
 end
 
@@ -77,7 +103,7 @@ module Sequel
 
       def bulk_load(table_name, file_path, delims, null_character, opts=OPTS)
         begin
-          output = log_yield("Bulk load #{file_path} into #{table_name}"){ _bulk_load(table_name, file_path, delims, null_character) }
+          output = log_yield("Bulk load #{file_path} into #{table_name}"){ conn.bulk_load(table_name, file_path, delims, null_character) }
           log_info("Bulk load: #{output}")
           yield(r) if block_given?
         rescue Exception, ArgumentError => e
@@ -85,34 +111,7 @@ module Sequel
         end
       end
 
-      def _bulk_load table_name, file_path, delims, null_character
-        output = nil
 
-        check_connectivity!
-        raise ConnectionError, "Not connected to server" unless connected?
-
-        delim_str = delims.map { |d| "'#{d}'" }.join(',')
-        statement = "COPY INTO #{table_name} FROM STDIN"
-        statement << " USING DELIMITERS #{delim_str}" if delims && delims.any?
-        statement << " NULL AS '#{null_character}'" if null_character
-
-        begin
-          credentials = Tempfile.new('.monetdb-')
-          credentials << "user=#{config[:username]}\n"
-          credentials << "password=#{config[:password]}"
-          credentials.flush
-
-          cmd = "DOTMONETDBFILE=#{credentials.path} mclient -Eutf-8 -h #{config[:host]} -d #{config[:database]} -s \"#{statement}\" - < #{file_path}"
-          output = `#{cmd} 2>&1`
-          if !$?.success?
-            raise Error, "Bulk insert failed: #{output}"
-          end
-        ensure
-          credentials.close
-          credentials.unlink
-        end
-        output
-      end
 
       # MonetDB doesn't require upcase identifiers.
       def identifier_input_method_default
