@@ -72,6 +72,10 @@ module Sequel
         c.disconnect
       end
 
+      def tables(opts=OPTS)
+        from(:tables).where('system = false').select_map(:name).map(&:to_sym)
+      end
+
       def connection_execute_method
         :query
       end
