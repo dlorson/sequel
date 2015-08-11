@@ -198,6 +198,12 @@ module Sequel
         db.bulk_load(first_source_table, file_path, delims, null_character)
       end
 
+      # MonetDB doesn't support truncate, so do a delete instead.
+      def truncate
+        delete
+        nil
+      end
+
       def fetch_rows(sql)
         execute(sql) do |s|
           i = -1
